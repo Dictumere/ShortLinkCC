@@ -4,64 +4,68 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 
-def shorten_link(token, url=None):
-    url_request = 'https://api.vk.ru/method/utils.getShortLink/'
+def shorten_link(token, url):
+    request_url = 'https://api.vk.ru/method/utils.getShortLink/'
     payload = {
         'access_token': token,
         'v': '5.199',
         'url': url,
         'private': '0'
     }
-    response = requests.post(url_request, json=payload, params=payload)
+    response = requests.post(request_url, json=payload, params=payload)
+    response.raise_for_status()
 
     answer = response.json()
     if 'error' in answer:
-        print(f"Ошибка: {answer['error']['error_msg']}")
+        raise ValueError(f"{answer['error']['error_msg']}")
     else:
         short_link = answer['response']['short_url']
         return short_link
 
 
-def count_clicks(token, link=None):
+def count_clicks(token, link):
     parsed_link = urlparse(link)
     short_key = parsed_link.path.lstrip('/')
-    url_request = 'https://api.vk.ru/method/utils.getLinkStats/'
+    request_url = 'https://api.vk.ru/method/utils.getLinkStats/'
     payload = {
         'access_token': token,
         'v': '5.199',
         'key': short_key,
         'interval': 'forever'
     }
-    response = requests.post(url_request, json=payload, params=payload)
+    response = requests.post(request_url, json=payload, params=payload)
+    response.raise_for_status()
 
     answer = response.json()
     if 'error' in answer:
-        print(f"Ошибка: {answer['error']['error_msg']}")
+        raise ValueError(f"{answer['error']['error_msg']}")
 
-    elif len(answer['response']['stats']) < 1:
+    clicks_count = answer['response'].get('stats', [])
+    if not clicks_count:
         return 0
 
-    else:
-        print(answer)
-        clicks_count = answer['response']['stats'][0]['views']
-        return clicks_count
 
-
-def is_shorten_link(url=None):
-    url = input('Введите ссылку: ')
-    parsed_url = urlparse(url)
-    if parsed_url.netloc == "vk.cc":
-        count = count_clicks(access_token_vk, url)
-        return f'Количество кликов: {count}'
-    else:
-        short = shorten_link(access_token_vk, url)
-        return f'Короткая ссылка: {short}'
+def is_shorten_link(token, url):
+    # parsed_url = urlparse(url)
+    # return parsed_url.netloc == "vk.cc"
+    answer = shorten_link(token, url)
+    if answer['error']['error_msg'] == 100:
+        count_clicks(token, url)
 
 
 if __name__ == '__main__':
     load_dotenv()
-    access_token_vk = os.getenv('ACCESS_TOKEN_VK')
+    access_vk_token = os.environ['ACCESS_VK_TOKEN']
+    url = input('Введите ссылку: ')
+
     try:
-        print(is_shorten_link())
+        if is_shorten_link(url):
+            count = count_clicks(access_vk_token, url)
+            print(f'Количество кликов: {count}')
+        else:
+            short = shorten_link(access_vk_token, url)
+            print(f'Короткая ссылка: {short}')
     except requests.exceptions.HTTPError as error:
         print(f'Ошибка HTTP: {error}')
+    except requests.exceptions.ConnectionError as error:
+        print(f'Ошибка соединения: {error}')
